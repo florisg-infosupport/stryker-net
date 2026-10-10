@@ -153,6 +153,23 @@ Do you have a suggestion for a (new) mutator? Feel free to create an [issue](htt
 | `Union()`            | `Intersect()`         |
 | `UnionBy()`          | `IntersectBy()`       |
 
+### LINQ Query Syntax
+
+Query expressions receive the following LINQ mutations:
+
+| Query syntax | Mutation |
+| ------------ | -------- |
+| `orderby key` or `orderby key ascending` | Change that key to descending |
+| `orderby key descending` | Change that key to ascending |
+| `where condition` | Remove that individual `where` clause |
+
+Each ordering key and each eligible `where` clause produces one independent mutation. In an
+`orderby` clause, the first key corresponds to `OrderBy` and later keys correspond to `ThenBy`;
+each separate `orderby` clause starts again with `OrderBy`. Query continuations are handled, and
+nested queries are mutated independently. These mutations run at the Standard level. Ordinary
+expression mutations continue to apply inside query predicates and projections. Query syntax does
+not introduce `select`, `group`, or `join` rewrites.
+
 ## String Literals (_string_)
 | Original | Mutated |
 | ------------- | ------------- |

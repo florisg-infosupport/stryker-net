@@ -106,6 +106,7 @@ public class CsharpMutantOrchestrator : BaseMutantOrchestrator<SyntaxTree, Seman
         new PostfixUnaryMutator(),
         new CheckedMutator(),
         new LinqMutator(),
+        new LinqQueryMutator(),
         new StringMutator(),
         new StringEmptyMutator(),
         new InterpolatedStringMutator(),

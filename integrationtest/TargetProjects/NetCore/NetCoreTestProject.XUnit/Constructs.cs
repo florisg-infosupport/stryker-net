@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using TargetProject.Defects;
 using TargetProject.StrykerFeatures;
 using Xunit;
 using Xunit.Abstractions;
@@ -95,6 +97,18 @@ namespace ExampleProject.XUnit
         public void TestRandom(int x)
         {
             _testOutputHelper.WriteLine($"Randomsource test: {x}");
+        }
+
+        [Fact]
+        public void ShouldApplyLinqQuerySyntaxOperations()
+        {
+            Assert.True(new[] { 2, 5 }.SequenceEqual(Linq.FilterPositive([-3, 0, 2, 5])));
+            Assert.True(new[] { 1, 2, 3 }.SequenceEqual(Linq.OrderAscending([3, 1, 2])));
+            Assert.True(new[] { 3, 2, 1 }.SequenceEqual(Linq.OrderDescending([3, 1, 2])));
+            Assert.True(new[] { 2, 5, 1, 3 }.SequenceEqual(Linq.OrderByGroupAndValue([(2, 3), (1, 5), (2, 1), (1, 2)])));
+            Assert.Equal(1, Linq.OrderAscending([3, 1, 2]).First());
+            Assert.Equal(3, Linq.OrderDescending([3, 1, 2]).First());
+            Assert.Equal(2, Linq.OrderByGroupAndValue([(2, 3), (1, 5), (2, 1), (1, 2)]).First());
         }
     }
 }

@@ -40,5 +40,6 @@ public enum LinqExpression
     TakeLast,
     UnionBy,
     Append,
-    Prepend
+    Prepend,
+    Where
 }

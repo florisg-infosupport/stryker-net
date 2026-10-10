@@ -205,6 +205,100 @@ public class ExcludeLinqExpressionFilterTests : TestBase
         mutations.ShouldNotBeEmpty();
     }
 
+    [TestMethod]
+    public void ShouldFilterQueryOrderingUsingOriginalDirection()
+    {
+        FilterQueryMutations("from x in xs orderby x descending select x", LinqExpression.OrderByDescending).ShouldBeEmpty();
+        FilterQueryMutations("from x in xs orderby x select x", LinqExpression.OrderByDescending).ShouldHaveSingleItem();
+    }
+
+    [TestMethod]
+    public void ShouldMapSecondaryOrderingKeysToThenBy()
+    {
+        var mutations = FilterQueryMutations("from x in xs orderby x, x.Name select x", LinqExpression.ThenBy);
+
+        mutations.ShouldHaveSingleItem().Mutation.ReplacementNode.ToString()
+            .ShouldBe("from x in xs orderby x descending, x.Name select x");
+    }
+
+    [TestMethod]
+    public void ShouldMapFirstKeyOfEveryOrderByClauseToOrderBy()
+    {
+        var mutations = FilterQueryMutations("from x in xs orderby x orderby x.Name select x", LinqExpression.OrderBy);
+
+        mutations.ShouldBeEmpty();
+    }
+
+    [TestMethod]
+    public void ShouldFilterWhereRemovalInContinuationAndNestedQueries()
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText("class C { object M(int[] xs, int[] ys) => from x in xs group x by x into grouped where (from y in ys where y > 0 select y).Any() select grouped; }");
+        var queries = syntaxTree.GetRoot().DescendantNodes().OfType<QueryExpressionSyntax>();
+        var mutants = queries.SelectMany(query => new LinqQueryMutator().ApplyMutations(query, null))
+            .Select(mutation => new Mutant { Mutation = mutation, ResultStatus = MutantStatus.Survived });
+
+        new ExcludeLinqExpressionFilter().FilterMutants(mutants, null, new StrykerOptions
+        {
+            ExcludedLinqExpressions = new[] { LinqExpression.Where }
+        }).ShouldBeEmpty();
+    }
+
+    [TestMethod]
+    public void ShouldNotFilterQueryMutationsWhenExclusionsAreEmptyOrUnrelated()
+    {
+        FilterQueryMutations("from x in xs where x > 0 orderby x select x").Count.ShouldBe(2);
+        FilterQueryMutations("from x in xs where x > 0 orderby x select x", LinqExpression.Where).ShouldHaveSingleItem();
+    }
+
+    [TestMethod]
+    public void ShouldFilterWhereRemovalWithoutFilteringOtherQueryMutations()
+    {
+        var mutations = FilterQueryMutations("from x in xs where x > 0 orderby x descending select x", LinqExpression.Where);
+
+        mutations.ShouldHaveSingleItem().Mutation.ReplacementNode.ToString()
+            .ShouldBe("from x in xs where x > 0 orderby x ascending select x");
+    }
+
+    [TestMethod]
+    public void ShouldClassifyQueryMutationBeforeSurroundingMethodCall()
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText("class C { bool M(int[] xs) => (from x in xs orderby x select x).Any(); }");
+        var query = syntaxTree.GetRoot().DescendantNodes().OfType<QueryExpressionSyntax>().Single();
+        var mutations = new LinqQueryMutator().ApplyMutations(query, null)
+            .Select(mutation => new Mutant { Mutation = mutation, ResultStatus = MutantStatus.Survived });
+
+        new ExcludeLinqExpressionFilter().FilterMutants(mutations, null, new StrykerOptions
+        {
+            ExcludedLinqExpressions = new[] { LinqExpression.Any }
+        }).ShouldHaveSingleItem();
+    }
+
+    [TestMethod]
+    public void ShouldRetainNonLinqMutationsInsideQueryPredicateWhenWhereIsExcluded()
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText("class C { bool M(int[] xs) => (from x in xs where x > 0 select x).Any(); }");
+        var condition = syntaxTree.GetRoot().DescendantNodes().OfType<BinaryExpressionSyntax>().Single();
+        var mutations = new BinaryExpressionMutator().ApplyMutations(condition, null)
+            .Select(mutation => new Mutant { Mutation = mutation, ResultStatus = MutantStatus.Survived });
+
+        new ExcludeLinqExpressionFilter().FilterMutants(mutations, null, new StrykerOptions
+        {
+            ExcludedLinqExpressions = new[] { LinqExpression.Where }
+        }).ShouldNotBeEmpty();
+    }
+
+    private static List<IMutant> FilterQueryMutations(string query, params LinqExpression[] excludedExpressions)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText($"class C {{ object M(int[] xs) => {query}; }}");
+        var queryExpression = syntaxTree.GetRoot().DescendantNodes().OfType<QueryExpressionSyntax>().Single();
+        var mutants = new LinqQueryMutator().ApplyMutations(queryExpression, null)
+            .Select(mutation => new Mutant { Mutation = mutation, ResultStatus = MutantStatus.Survived });
+
+        return new ExcludeLinqExpressionFilter().FilterMutants(mutants, null, new StrykerOptions
+        {
+            ExcludedLinqExpressions = excludedExpressions
+        }).ToList();
+    }
 
     private ExpressionSyntax GenerateExpressions(string expression)
     {

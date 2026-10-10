@@ -130,6 +130,19 @@ public class IgnoreMutationsInputTests : TestBase
     }
 
     [TestMethod]
+    [DataRow("linq.Where")]
+    [DataRow("LINQ.where")]
+    public void ShouldAcceptWhereExclusionRegardlessOfCase(string exclusion)
+    {
+        var target = new IgnoreMutationsInput
+        {
+            SuppliedInput = new[] { exclusion }
+        };
+
+        target.ValidateLinqExpressions().ShouldHaveSingleItem().ShouldBe(LinqExpression.Where);
+    }
+
+    [TestMethod]
     public void ShouldIgnoreIncorrectFormatWhenValidateLinqExpressions()
     {
         var target = new IgnoreMutationsInput

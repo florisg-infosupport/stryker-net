@@ -831,6 +831,56 @@ Action act = () => Console.WriteLine((StrykerNamespace.MutantControl.IsActive(1)
     }
 
     [TestMethod]
+    public void ShouldRegisterAndInjectLinqQueryMutationsAtStandardLevel()
+    {
+        Target = CreateQueryOrchestrator(MutationLevel.Standard);
+        var mutatedTree = MutateQuerySource("using System.Linq; class C { static int[] M(int[] xs) => (from x in xs orderby x select x).ToArray(); }");
+
+        var queryMutant = Target.Mutants.ShouldHaveSingleItem();
+        queryMutant.Mutation.Type.ShouldBe(Mutator.Linq);
+        queryMutant.Mutation.OriginalNode.ShouldBeOfType<QueryExpressionSyntax>();
+        queryMutant.Mutation.ReplacementNode.ToString().ShouldBe("from x in xs orderby x descending select x");
+        mutatedTree.ToString().ShouldContain("?from x in xs orderby x descending select x:from x in xs orderby x select x");
+        mutatedTree.ShouldNotContainErrors();
+    }
+
+    [TestMethod]
+    public void ShouldNotIncludeLinqQueryMutationsAtBasicLevel()
+    {
+        Target = CreateQueryOrchestrator(MutationLevel.Basic);
+        MutateQuerySource("using System.Linq; class C { static int[] M(int[] xs) => (from x in xs orderby x select x).ToArray(); }");
+
+        Target.Mutants.ShouldBeEmpty();
+    }
+
+    [TestMethod]
+    public void ShouldMutateNestedQueriesAndPredicateExpressionsIndependently()
+    {
+        Target = CreateQueryOrchestrator(MutationLevel.Standard);
+        MutateQuerySource("using System.Linq; class C { static int[] M(int[] xs, int[] ys) => (from x in xs where (from y in ys where y > 0 select y).Any() orderby x select x).ToArray(); }");
+
+        Target.Mutants.Count(mutant => mutant.Mutation.OriginalNode is QueryExpressionSyntax).ShouldBe(3);
+        Target.Mutants.Any(mutant => mutant.Mutation.OriginalNode is BinaryExpressionSyntax).ShouldBeTrue();
+        Target.Mutants.Where(mutant => mutant.Mutation.OriginalNode is QueryExpressionSyntax)
+            .Select(mutant => mutant.Mutation.ReplacementNode.ToString())
+            .Distinct()
+            .Count()
+            .ShouldBe(3);
+    }
+
+    [TestMethod]
+    public void ShouldHonorLinqDisableCommentForQueryMutations()
+    {
+        Target = CreateQueryOrchestrator(MutationLevel.Standard);
+        MutateQuerySource("using System.Linq; class C { static int[] M(int[] xs) { // Stryker disable once linq\n return (from x in xs orderby x select x).ToArray(); } }");
+
+        var mutant = Target.Mutants.Where(candidate => candidate.Mutation.Type == Mutator.Linq).ShouldHaveSingleItem();
+        mutant.Mutation.Type.ShouldBe(Mutator.Linq);
+        mutant.ResultStatus.ShouldBe(MutantStatus.Ignored);
+        mutant.ResultStatusReason.ShouldBe("Ignored via code comment.");
+    }
+
+    [TestMethod]
     public void ShouldMutateComplexLinqMethods()
     {
         var source = @"private void Linq()
@@ -2018,5 +2068,24 @@ if(StrykerNamespace.MutantControl.IsActive(1)){;}else{if(StrykerNamespace.Mutant
         ShouldMutateSourceInClassToExpected(source, expected);
     }
 
+    private CsharpMutantOrchestrator CreateQueryOrchestrator(MutationLevel mutationLevel) =>
+        new(new MutantPlacer(Injector), options: new StrykerOptions
+        {
+            MutationLevel = mutationLevel,
+            OptimizationMode = OptimizationModes.CoverageBasedTest
+        });
+
+    private SyntaxTree MutateQuerySource(string source)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        Type[] typeToLoad = [typeof(object), typeof(List<>), typeof(Enumerable), typeof(Nullable<>)];
+        var references = typeToLoad.Select(type => MetadataReference.CreateFromFile(type.Assembly.Location));
+        var compilation = CSharpCompilation.Create(null,
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+            .AddSyntaxTrees(syntaxTree)
+            .WithReferences(references);
+
+        return Target.Mutate(syntaxTree, compilation.GetSemanticModel(syntaxTree));
+    }
 
 }

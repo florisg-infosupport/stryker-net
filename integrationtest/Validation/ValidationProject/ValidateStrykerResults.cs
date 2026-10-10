@@ -83,6 +83,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 660, ignored: 271, survived: 4, killed: 9, timeout: 2, nocoverage: 340);
         CheckReportTestCounts(report, total: 11);
+        CheckLinqQueryMutants(report, MutantStatus.Killed);
     }
 
     [Fact]
@@ -103,6 +104,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 660, ignored: 117, survived: 5, killed: 11, timeout: 2, nocoverage: 491);
         CheckReportTestCounts(report, total: 21);
+        CheckLinqQueryMutants(report, MutantStatus.Killed);
     }
 
     [Fact]
@@ -123,6 +125,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 667, ignored: 272, survived: 1, killed: 1, timeout: 0, nocoverage: 359);
         CheckReportTestCounts(report, total: 2);
+        CheckLinqQueryMutants(report, MutantStatus.NoCoverage);
     }
 
     [Fact]
@@ -145,6 +148,7 @@ public class ValidateStrykerResults
         // extra test covers ExtraProject, which the solution run mutates as well; see MTPSolution.
         CheckReportMutants(report, total: 660, ignored: 271, survived: 1, killed: 1, timeout: 0, nocoverage: 353);
         CheckReportTestCounts(report, total: 3);
+        CheckLinqQueryMutants(report, MutantStatus.NoCoverage);
     }
 
     [Fact]
@@ -165,6 +169,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 660, ignored: 271, survived: 1, killed: 1, timeout: 0, nocoverage: 353);
         CheckReportTestCounts(report, total: 2);
+        CheckLinqQueryMutants(report, MutantStatus.NoCoverage);
     }
 
     [Fact]
@@ -185,6 +190,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 660, ignored: 271, survived: 1, killed: 1, timeout: 0, nocoverage: 353);
         CheckReportTestCounts(report, total: 2);
+        CheckLinqQueryMutants(report, MutantStatus.NoCoverage);
     }
 
     [Fact]
@@ -212,6 +218,7 @@ public class ValidateStrykerResults
         CheckEveryMutatedProjectIsCovered(report, "KilledMutants.cs", "Teacher.cs", "Lesson.cs");
         CheckReportMutants(report, total: 673, ignored: 275, survived: 2, killed: 3, timeout: 2, nocoverage: 357);
         CheckReportTestCounts(report, total: 11);
+        CheckLinqQueryMutants(report, MutantStatus.NoCoverage);
     }
 
     [Fact]
@@ -252,6 +259,7 @@ public class ValidateStrykerResults
 
         CheckReportMutants(report, total: 660, ignored: 271, survived: 4, killed: 9, timeout: 2, nocoverage: 340);
         CheckReportTestCounts(report, total: 23);
+        CheckLinqQueryMutants(report, MutantStatus.Killed);
     }
 
     [Fact]
@@ -316,6 +324,24 @@ public class ValidateStrykerResults
             file.Value.Mutants.Count(m => m.Status == MutantStatus.Killed.ToString())
                 .ShouldBeGreaterThan(0, $"no mutant of {sourceFile} was killed: the coverage of its assembly was lost");
         }
+    }
+
+    private void CheckLinqQueryMutants(IJsonReport report, MutantStatus expectedStatus)
+    {
+        var file = report.Files.Single(entry => entry.Key.Replace('\\', '/').EndsWith("Defects/Linq.cs", StringComparison.OrdinalIgnoreCase));
+        var mutants = file.Value.Mutants
+            .Where(mutant => mutant.MutatorName.StartsWith("Linq query ", StringComparison.Ordinal))
+            .ToList();
+
+        mutants.Count.ShouldBe(5);
+        mutants.Select(mutant => mutant.Replacement).Distinct().Count().ShouldBe(5);
+        mutants.All(mutant => mutant.Status == expectedStatus.ToString()).ShouldBeTrue();
+        mutants.Any(mutant => mutant.Status == MutantStatus.CompileError.ToString()).ShouldBeFalse();
+        mutants.Select(mutant => mutant.Replacement).ShouldContain("from value in values select value");
+        mutants.Select(mutant => mutant.Replacement).ShouldContain("from value in values orderby value descending select value");
+        mutants.Select(mutant => mutant.Replacement).ShouldContain("from value in values orderby value ascending select value");
+        mutants.Select(mutant => mutant.Replacement).ShouldContain("from item in values orderby item.Group descending, item.Value select item.Value");
+        mutants.Select(mutant => mutant.Replacement).ShouldContain("from item in values orderby item.Group, item.Value descending select item.Value");
     }
 
     private void CheckReportMutants(IJsonReport report, int total, int ignored, int survived, int killed, int timeout, int nocoverage, int runtimeError = 0)
